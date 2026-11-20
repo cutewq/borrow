@@ -22,21 +22,9 @@
       width: 100%;
       max-width: 380px;
     }
-    h2 {
-      margin-top: 0;
-      color: #1e40af;
-      text-align: center;
-    }
-    .form-group {
-      margin-bottom: 14px;
-      display: flex;
-      flex-direction: column;
-    }
-    label {
-      font-weight: bold;
-      margin-bottom: 6px;
-      font-size: 0.95rem;
-    }
+    h2 { margin-top: 0; color: #1e40af; text-align: center; }
+    .form-group { margin-bottom: 14px; display: flex; flex-direction: column; }
+    label { font-weight: bold; margin-bottom: 6px; font-size: 0.95rem; }
     input {
       padding: 10px;
       border: 1px solid #d1d5db;
@@ -70,11 +58,11 @@
     <h2>🔐 系統登入</h2>
     <div class="form-group">
       <label for="userIdInput">帳號 (User ID)</label>
-      <input type="text" id="userIdInput" placeholder="請輸入帳號" />
+      <input type="text" id="userIdInput" placeholder="請輸入帳號" autocomplete="username" />
     </div>
     <div class="form-group">
       <label for="passwordInput">密碼</label>
-      <input type="password" id="passwordInput" placeholder="請輸入密碼" />
+      <input type="password" id="passwordInput" placeholder="請輸入密碼" autocomplete="current-password" />
     </div>
     <button id="loginBtn" onclick="doLogin()">登入</button>
     <div id="loginMsg" class="msg"></div>
@@ -84,26 +72,28 @@
     // ⚠️ 請換成你的 Google Apps Script 部署網址（需與 index.html 相同）
     const API_URL = "https://script.google.com/macros/s/AKfycbz22YkMiPQ898V1KmkQ5E3nMhHzQUTUQDG3TbMdE7CmJs42JbDufwyZjwM6XkxiWUXb/exec";
 
-    // 支援按 Enter 鍵直接登入
     document.getElementById("passwordInput").addEventListener("keydown", (e) => {
       if (e.key === "Enter") doLogin();
     });
 
+    function showMsg(color, text) {
+      const el = document.getElementById("loginMsg");
+      el.style.color = color;
+      el.textContent = text;
+    }
+
     async function doLogin() {
       const userId = document.getElementById("userIdInput").value.trim();
       const password = document.getElementById("passwordInput").value.trim();
-      const msgEl = document.getElementById("loginMsg");
       const btn = document.getElementById("loginBtn");
 
       if (!userId || !password) {
-        msgEl.style.color = "#dc2626";
-        msgEl.textContent = "請輸入帳號與密碼。";
+        showMsg("#dc2626", "請輸入帳號與密碼。");
         return;
       }
 
       btn.disabled = true;
-      msgEl.style.color = "#2563eb";
-      msgEl.textContent = "驗證中...";
+      showMsg("#2563eb", "驗證中...");
 
       try {
         const res = await fetch(API_URL, {
@@ -111,32 +101,35 @@
           headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify({ action: "login", userId, password })
         });
-        const data = await res.json();
 
-        if (data.success) {
-          // 後端若仍是舊版，不會回傳 token，直接提示重新部署
-          if (!data.user || !data.user.token) {
-            msgEl.style.color = "#dc2626";
-            msgEl.textContent = "後端尚未更新：登入成功但沒有收到 token，請在 Apps Script 重新部署新版本。";
-            return;
-          }
-
-          // 寫入 localStorage，其他分頁會立刻收到通知
-          localStorage.setItem("loggedInUser", JSON.stringify(data.user));
-          msgEl.style.color = "#059669";
-          msgEl.textContent = `歡迎，${data.user.name}！登入成功。\n借還分頁已自動同步，您現在可以關閉此分頁。`;
-
-          // 若是由原分頁透過 window.open 開啟，1.5 秒後嘗試自動關閉此分頁
-          setTimeout(() => {
-            window.close();
-          }, 1500);
-        } else {
-          msgEl.style.color = "#dc2626";
-          msgEl.textContent = data.message || "登入失敗。";
+        // 先讀成文字再解析，若回傳的是 Google 的錯誤網頁也能給出明確提示
+        const raw = await res.text();
+        let data;
+        try {
+          data = JSON.parse(raw);
+        } catch (e) {
+          showMsg("#dc2626", "後端回傳格式不正確，請確認 API_URL 是目前專案的部署網址，且「誰可以存取」設為「所有人」。");
+          return;
         }
+
+        if (!data.success) {
+          showMsg("#dc2626", data.message || "登入失敗。");
+          return;
+        }
+
+        if (!data.user || !data.user.token) {
+          showMsg("#dc2626", "後端尚未更新：登入成功但沒有收到 token，請在 Apps Script 重新部署新版本。");
+          return;
+        }
+
+        // 寫入 localStorage，其他分頁會立刻收到通知
+        localStorage.setItem("loggedInUser", JSON.stringify(data.user));
+        showMsg("#059669", "歡迎，" + data.user.name + "！登入成功。\n借還分頁已自動同步，您現在可以關閉此分頁。");
+
+        setTimeout(() => { window.close(); }, 1500);
+
       } catch (err) {
-        msgEl.style.color = "#dc2626";
-        msgEl.textContent = "連線失敗：" + err.message;
+        showMsg("#dc2626", "連線失敗：" + err.message);
       } finally {
         btn.disabled = false;
       }
