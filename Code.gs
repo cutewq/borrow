@@ -1,5 +1,5 @@
 /****************************************************
- * 設備 QR Code 借還管理系統 API 後端
+ * 設備 QR Code 借還管理系統 API 後端（含 Token 驗證）
  ****************************************************/
 
 const CONFIG = {
@@ -10,34 +10,46 @@ const CONFIG = {
   BORROWED: "借出中",
   TIMEZONE: "Asia/Taipei",
   LOCK_TIMEOUT: 15000,
-  HISTORY_LIMIT: 500
+  HISTORY_LIMIT: 500,
+  SESSION_TTL: 21600,      // 登入有效秒數（6 小時，CacheService 上限）
+  MAX_LOGIN_FAILS: 5,      // 連續密碼錯誤上限
+  FAIL_WINDOW: 600         // 鎖定秒數（10 分鐘）
 };
 
-// 處理前端 POST 請求的 API 入口
+/* ===================== API 入口 ===================== */
+
 function doPost(e) {
   try {
     const contents = JSON.parse(e.postData.contents);
     const action = contents.action;
     let result;
 
-    switch (action) {
-      case "login":
-        result = handleLogin(contents.userId, contents.password);
-        break;
-      case "getInitialData":
-        result = getInitialData();
-        break;
-      case "borrow":
-        result = processEquipment_("borrow", contents.id, contents.name);
-        break;
-      case "return":
-        result = processEquipment_("return", contents.id, contents.name);
-        break;
-      case "getHistory":
-        result = getBorrowHistory(contents.filter || "all");
-        break;
-      default:
-        throw new Error("未知的操作類型：" + action);
+    if (action === "login") {
+      result = handleLogin(contents.userId, contents.password);
+    } else {
+      // 除登入外，所有操作都必須通過 token 驗證
+      const user = requireUser_(contents.token);
+
+      switch (action) {
+        case "getInitialData":
+          result = getInitialData();
+          break;
+        case "borrow":
+          result = processEquipment_("borrow", contents.id, user.name);
+          break;
+        case "return":
+          result = processEquipment_("return", contents.id, user.name);
+          break;
+        case "getHistory":
+          result = getBorrowHistory(contents.filter || "all");
+          break;
+        case "logout":
+          CacheService.getScriptCache().remove("session:" + contents.token);
+          result = { success: true, message: "已登出" };
+          break;
+        default:
+          throw new Error("未知的操作類型：" + action);
+      }
     }
 
     return createJsonResponse_(result);
@@ -45,32 +57,58 @@ function doPost(e) {
   } catch (err) {
     return createJsonResponse_({
       success: false,
+      code: err.code || "",
       message: err.message || "伺服器處理失敗。"
     });
   }
 }
 
-// 建立 JSON 回應格式（支援跨域安全）
 function createJsonResponse_(data) {
   return ContentService
     .createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// 取得試算表物件
 function getSpreadsheet_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) throw new Error("無法取得試算表。");
   return ss;
 }
 
-// 處理使用者登入驗證
+/* ===================== Session / Token ===================== */
+
+function createSession_(user) {
+  const token = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, "");
+  CacheService.getScriptCache().put("session:" + token, JSON.stringify(user), CONFIG.SESSION_TTL);
+  return token;
+}
+
+function requireUser_(token) {
+  const raw = token ? CacheService.getScriptCache().get("session:" + String(token)) : null;
+  if (!raw) {
+    const e = new Error("登入已過期，請重新登入。");
+    e.code = "AUTH";
+    throw e;
+  }
+  return JSON.parse(raw);
+}
+
+/* ===================== 登入 ===================== */
+
 function handleLogin(userId, password) {
   const cleanUserId = String(userId || "").trim();
   const cleanPassword = String(password || "").trim();
 
   if (!cleanUserId) return { success: false, message: "請輸入帳號。" };
   if (!cleanPassword) return { success: false, message: "請輸入密碼。" };
+
+  // 錯誤次數限制（避免暴力破解 4 位數密碼）
+  const cache = CacheService.getScriptCache();
+  const failKey = "fail:" + cleanUserId.slice(0, 100);
+  const fails = Number(cache.get(failKey) || 0);
+  if (fails >= CONFIG.MAX_LOGIN_FAILS) {
+    return { success: false, message: "嘗試次數過多，請 10 分鐘後再試。" };
+  }
 
   const ss = getSpreadsheet_();
   const sheet = ss.getSheetByName(CONFIG.USER_SHEET);
@@ -93,25 +131,27 @@ function handleLogin(userId, password) {
       }
       const normalizedRowPass = rowPass === "0" ? "0000" : rowPass.padStart(4, "0");
       if (rowPass === cleanPassword || normalizedRowPass === cleanPassword) {
+        cache.remove(failKey);
+        const baseUser = { user_id: rowUserId, name: rowName, role: rowRole };
+        const token = createSession_(baseUser);
         return {
           success: true,
           message: "登入成功",
-          user: {
-            user_id: rowUserId,
-            name: rowName,
-            role: rowRole
-          }
+          user: { user_id: rowUserId, name: rowName, role: rowRole, token: token }
         };
       } else {
+        cache.put(failKey, String(fails + 1), CONFIG.FAIL_WINDOW);
         return { success: false, message: "密碼錯誤，請重新輸入。" };
       }
     }
   }
 
+  cache.put(failKey, String(fails + 1), CONFIG.FAIL_WINDOW);
   return { success: false, message: "找不到此帳號（user_id）。" };
 }
 
-// 建立或取得設備工作表
+/* ===================== 工作表 ===================== */
+
 function getEquipmentSheet_(ss) {
   let sheet = ss.getSheetByName(CONFIG.EQUIPMENT_SHEET);
   if (!sheet) {
@@ -122,19 +162,19 @@ function getEquipmentSheet_(ss) {
   return sheet;
 }
 
-// 建立或取得紀錄工作表
 function getRecordSheet_(ss) {
   let sheet = ss.getSheetByName(CONFIG.RECORD_SHEET);
   if (!sheet) {
     sheet = ss.insertSheet(CONFIG.RECORD_SHEET);
   }
-  const headers = ["設備編號", "設備名稱", "廠牌", "借用人", "借用時間", "歸還人", "歸還時間"];
+  // 只在工作表為空時初始化標題與日期格式，避免每次呼叫都重設整欄格式
   if (sheet.getLastRow() === 0) {
+    const headers = ["設備編號", "設備名稱", "廠牌", "借用人", "借用時間", "歸還人", "歸還時間"];
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     formatHeader_(sheet, headers.length);
+    sheet.getRange("E:E").setNumberFormat("yyyy/MM/dd HH:mm:ss");
+    sheet.getRange("G:G").setNumberFormat("yyyy/MM/dd HH:mm:ss");
   }
-  sheet.getRange("E:E").setNumberFormat("yyyy/MM/dd HH:mm:ss");
-  sheet.getRange("G:G").setNumberFormat("yyyy/MM/dd HH:mm:ss");
   return sheet;
 }
 
@@ -144,18 +184,18 @@ function formatHeader_(sheet, columns) {
   sheet.autoResizeColumns(1, columns);
 }
 
-// 驗證輸入
+/* ===================== 驗證與查詢 ===================== */
+
 function validateInput_(id, name) {
   const cleanId = String(id || "").trim();
   const cleanName = String(name || "").trim();
   if (!cleanId) throw new Error("請輸入或掃描設備編號。");
-  if (!cleanName) throw new Error("請輸入操作人姓名。");
+  if (!cleanName) throw new Error("無法取得操作人姓名，請重新登入。");
   if (cleanName.length > 50) throw new Error("姓名不可超過 50 個字。");
   if (cleanId.length > 100) throw new Error("設備編號長度不正確。");
   return { id: cleanId, name: cleanName };
 }
 
-// 尋找設備
 function findEquipment_(sheet, id) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) throw new Error("設備清單目前沒有資料。");
@@ -176,7 +216,6 @@ function findEquipment_(sheet, id) {
   throw new Error("找不到設備編號：" + id);
 }
 
-// 取得初始資料
 function getInitialData() {
   const ss = getSpreadsheet_();
   const equipmentSheet = getEquipmentSheet_(ss);
@@ -205,7 +244,8 @@ function getInitialData() {
   };
 }
 
-// 處理借用與歸還
+/* ===================== 借用 / 歸還 ===================== */
+
 function processEquipment_(action, id, name) {
   const input = validateInput_(id, name);
   const lock = LockService.getScriptLock();
@@ -260,6 +300,8 @@ function processEquipment_(action, id, name) {
         recordSheet.getRange(targetRow, 6, 1, 2).setValues(oldValues);
         throw err;
       }
+    } else {
+      throw new Error("未知的操作類型。");
     }
 
     SpreadsheetApp.flush();
@@ -281,7 +323,8 @@ function processEquipment_(action, id, name) {
   }
 }
 
-// 取得歷史紀錄
+/* ===================== 歷史紀錄 ===================== */
+
 function getBorrowHistory(filter) {
   const sheet = getRecordSheet_(getSpreadsheet_());
   let records = readHistory_(sheet);
@@ -311,5 +354,7 @@ function readHistory_(sheet) {
 
 function formatTime_(value) {
   if (!value) return "";
-  return Utilities.formatDate(new Date(value), CONFIG.TIMEZONE, "yyyy/MM/dd HH:mm:ss");
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return String(value);
+  return Utilities.formatDate(d, CONFIG.TIMEZONE, "yyyy/MM/dd HH:mm:ss");
 }
