@@ -5,274 +5,358 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>設備 QR Code 借還管理系統</title>
   <style>
-    body {
-      font-family: "Microsoft JhengHei", sans-serif;
-      background-color: #f3f4f6;
-      margin: 0;
-      padding: 20px;
-      color: #1f2937;
-    }
-    .container {
-      max-width: 720px;
-      margin: 0 auto;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
-    .card {
-      background: #ffffff;
-      border-radius: 10px;
-      padding: 20px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    }
-    h2 {
-      margin-top: 0;
-      font-size: 1.2rem;
-      color: #1e40af;
-      border-bottom: 2px solid #dbeafe;
-      padding-bottom: 8px;
-    }
-    .top-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
-    .form-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-    .form-group { flex: 1; min-width: 180px; display: flex; flex-direction: column; }
-    label { font-size: 0.9rem; font-weight: bold; margin-bottom: 4px; }
-    input { padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 1rem; }
-    input[readonly] { background-color: #e5e7eb; color: #374151; cursor: not-allowed; }
-    button { padding: 10px 18px; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; }
-    button:disabled { opacity: 0.6; cursor: not-allowed; }
-    .btn-primary { background-color: #2563eb; color: #fff; }
-    .btn-borrow  { background-color: #059669; color: #fff; }
-    .btn-return  { background-color: #d97706; color: #fff; }
-    .btn-logout  { background-color: #6b7280; color: #fff; padding: 8px 14px; font-size: 0.9rem; }
-    .disabled-section { opacity: 0.55; pointer-events: none; }
-    .status-msg { margin-top: 10px; font-weight: bold; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; }
-    th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; }
-    th { background-color: #dbeafe; color: #1e40af; }
+    body { font-family: "Microsoft JhengHei", sans-serif; background:#f3f4f6; margin:0; padding:20px; color:#1f2937; }
+    .container { max-width:820px; margin:0 auto; display:flex; flex-direction:column; gap:16px; }
+    .card { background:#fff; border-radius:10px; padding:20px; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+    h2 { margin:0 0 12px; font-size:1.15rem; color:#1e40af; border-bottom:2px solid #dbeafe; padding-bottom:8px; }
+    h3 { margin:18px 0 8px; font-size:1rem; color:#1e40af; }
+    .bar { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+    .group { flex:1; min-width:150px; display:flex; flex-direction:column; }
+    label { font-size:.9rem; font-weight:bold; margin-bottom:4px; }
+    input, select { padding:9px; border:1px solid #d1d5db; border-radius:6px; font-size:1rem; }
+    input[readonly] { background:#e5e7eb; cursor:not-allowed; }
+    button { padding:9px 16px; border:none; border-radius:6px; font-size:.95rem; font-weight:bold; cursor:pointer; color:#fff; background:#2563eb; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .green { background:#059669; } .amber { background:#d97706; } .gray { background:#6b7280; } .red { background:#dc2626; }
+    .small { padding:5px 10px; font-size:.82rem; }
+    .tabs { display:flex; gap:8px; flex-wrap:wrap; }
+    .tabs button { background:#e5e7eb; color:#374151; }
+    .tabs button.active { background:#2563eb; color:#fff; }
+    .locked { opacity:.5; pointer-events:none; }
+    .hidden { display:none !important; }
+    .msg { margin-top:10px; font-weight:bold; white-space:pre-line; }
+    .scroll { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; font-size:.9rem; }
+    th, td { border:1px solid #e5e7eb; padding:7px; text-align:left; }
+    th { background:#dbeafe; color:#1e40af; white-space:nowrap; }
   </style>
 </head>
 <body>
-  <div class="container">
+<div class="container">
 
-    <!-- 最上方：登入狀態列 -->
-    <div class="card">
-      <div class="top-bar" id="notLoggedInBar">
-        <span>⚠️ 目前尚未登入，請先登入後再進行借還登記。</span>
-        <button class="btn-primary" onclick="openLoginTab()">另開分頁登入</button>
-      </div>
-
-      <div class="top-bar" id="loggedInBar" style="display: none;">
-        <div>
-          ✅ 目前登入：<strong id="displayUserName"></strong>
-          （帳號：<span id="displayUserId"></span> / 權限：<span id="displayUserRole"></span>）
-        </div>
-        <button class="btn-logout" onclick="handleLogout()">登出</button>
+  <!-- 登入狀態列 -->
+  <div class="card">
+    <div class="bar" id="outBar">
+      <span>⚠️ 尚未登入，請先登入後再使用。</span>
+      <button onclick="window.open('login.html','_blank')">另開分頁登入</button>
+    </div>
+    <div class="bar hidden" id="inBar">
+      <div>✅ <strong id="uName"></strong>（帳號：<span id="uId"></span> / 角色：<span id="uRole"></span>）</div>
+      <div>
+        <button class="gray small" onclick="togglePw()">變更密碼</button>
+        <button class="gray small" onclick="logout()">登出</button>
       </div>
     </div>
-
-    <!-- 中間：設備借還登記區 -->
-    <div class="card disabled-section" id="operationCard">
-      <h2>📦 設備借還登記</h2>
-      <div class="form-row">
-        <div class="form-group">
-          <label for="operatorName">借閱人 / 歸還人（自動帶入登入者）</label>
-          <input type="text" id="operatorName" placeholder="請先於上方登入" readonly />
-        </div>
-        <div class="form-group">
-          <label for="equipmentId">設備編號（可掃描 QR Code）</label>
-          <input type="text" id="equipmentId" placeholder="請輸入或掃描設備編號" />
-        </div>
-      </div>
-      <div class="form-row">
-        <button class="btn-borrow" onclick="submitEquipmentAction('borrow')">確認借用</button>
-        <button class="btn-return" onclick="submitEquipmentAction('return')">確認歸還</button>
-      </div>
-      <div id="actionMsg" class="status-msg"></div>
-    </div>
-
-    <!-- 下方：近期借還紀錄 -->
-    <div class="card">
-      <h2>📋 近期借還紀錄</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>設備編號</th>
-            <th>設備名稱</th>
-            <th>借用人</th>
-            <th>借用時間</th>
-            <th>歸還人</th>
-            <th>歸還時間</th>
-          </tr>
-        </thead>
-        <tbody id="historyTableBody">
-          <tr><td colspan="6">請先登入以查看紀錄</td></tr>
-        </tbody>
-      </table>
-    </div>
-
   </div>
 
-  <script>
-    // ⚠️ 請換成你的 Google Apps Script 部署網址（需與 login.html 相同）
-    const API_URL = "https://script.google.com/macros/s/AKfycbz22YkMiPQ898V1KmkQ5E3nMhHzQUTUQDG3TbMdE7CmJs42JbDufwyZjwM6XkxiWUXb/exec";
-    let currentUser = null;
+  <!-- 變更密碼 -->
+  <div class="card hidden" id="pwCard">
+    <h2>🔑 變更密碼</h2>
+    <div id="pwNotice" class="msg hidden" style="color:#d97706;margin:0 0 10px">這是您的初始或重設密碼，請先設定新密碼才能繼續使用。</div>
+    <div class="row">
+      <div class="group"><label>目前密碼</label><input type="password" id="oldPw" autocomplete="current-password" /></div>
+      <div class="group"><label>新密碼（至少 6 個字元）</label><input type="password" id="newPw" autocomplete="new-password" /></div>
+      <div class="group"><label>再輸入一次新密碼</label><input type="password" id="newPw2" autocomplete="new-password" /></div>
+    </div>
+    <button onclick="changePw()">更新密碼</button>
+    <div id="pwMsg" class="msg"></div>
+  </div>
 
-    window.addEventListener("DOMContentLoaded", () => {
-      syncUserFromStorage();
+  <!-- 分頁按鈕 -->
+  <div class="tabs hidden" id="tabs">
+    <button data-tab="opTab" class="active">📦 借還登記</button>
+    <button data-tab="recTab">📋 借還紀錄</button>
+    <button data-tab="adminTab" id="adminBtn" class="hidden">🛠 管理</button>
+  </div>
+
+  <!-- 借還登記 -->
+  <div class="card hidden" id="opTab">
+    <h2>📦 設備借還登記</h2>
+    <div class="row">
+      <div class="group"><label>操作人（自動帶入）</label><input type="text" id="opName" readonly /></div>
+      <div class="group"><label>設備編號（可掃描 QR Code）</label><input type="text" id="eqId" placeholder="請輸入或掃描設備編號" /></div>
+    </div>
+    <div class="row">
+      <button class="green" id="bBorrow" onclick="act('borrow')">確認借用</button>
+      <button class="amber" id="bReturn" onclick="act('return')">確認歸還</button>
+    </div>
+    <div id="opMsg" class="msg"></div>
+  </div>
+
+  <!-- 借還紀錄 -->
+  <div class="card hidden" id="recTab">
+    <h2>📋 借還紀錄 <span id="recHint" style="font-size:.8rem;color:#6b7280;font-weight:normal"></span></h2>
+    <div class="row">
+      <div class="group" style="max-width:220px"><label>篩選</label>
+        <select id="recFilter" onchange="loadRecords()">
+          <option value="all">全部（最近 20 筆）</option>
+          <option value="outstanding">只看尚未歸還</option>
+        </select>
+      </div>
+    </div>
+    <div class="scroll"><table>
+      <thead><tr><th>設備編號</th><th>設備名稱</th><th>借用人</th><th>借用時間</th><th>歸還人</th><th>歸還時間</th></tr></thead>
+      <tbody id="recBody"></tbody>
+    </table></div>
+  </div>
+
+  <!-- 管理 -->
+  <div class="card hidden" id="adminTab">
+    <h2>🛠 管理員功能</h2>
+
+    <h3>使用者</h3>
+    <div class="row">
+      <div class="group"><label>帳號</label><input id="auId" /></div>
+      <div class="group"><label>姓名</label><input id="auName" /></div>
+      <div class="group"><label>角色</label>
+        <select id="auRole"><option value="student">student</option><option value="teacher">teacher</option><option value="admin">admin</option></select></div>
+      <div class="group"><label>狀態</label>
+        <select id="auStatus"><option value="">啟用</option><option value="不啟用">不啟用</option></select></div>
+    </div>
+    <button class="green" onclick="saveUser()">新增／更新使用者</button>
+    <div id="auMsg" class="msg"></div>
+    <div class="scroll" style="margin-top:10px"><table>
+      <thead><tr><th>帳號</th><th>姓名</th><th>角色</th><th>狀態</th><th>需改密碼</th><th>操作</th></tr></thead>
+      <tbody id="userBody"></tbody>
+    </table></div>
+
+    <h3>設備</h3>
+    <div class="row">
+      <div class="group"><label>設備編號</label><input id="aeId" /></div>
+      <div class="group"><label>設備名稱</label><input id="aeName" /></div>
+      <div class="group"><label>廠牌</label><input id="aeBrand" /></div>
+      <div class="group"><label>狀態</label>
+        <select id="aeStatus"><option value="可借用">可借用</option><option value="維修中">維修中</option></select></div>
+    </div>
+    <button class="green" onclick="saveEquipment()">新增／更新設備</button>
+    <div id="aeMsg" class="msg"></div>
+    <div class="scroll" style="margin-top:10px"><table>
+      <thead><tr><th>設備編號</th><th>設備名稱</th><th>廠牌</th><th>狀態</th><th>操作</th></tr></thead>
+      <tbody id="eqBody"></tbody>
+    </table></div>
+  </div>
+
+</div>
+
+<script>
+  // ⚠️ 請換成你的 Google Apps Script 部署網址（需與 login.html 相同）
+  const API_URL = "https://script.google.com/macros/s/AKfycbzSZY6RtjJyPxMFbjrgAmQj1KOhw0bodry_jB0WQy5aFGnIx6EQcfUL9nYnqGp25-2e/exec";
+  const KEY = "loggedInUser";
+  const ROLE_LABEL = { admin: "管理員", teacher: "老師", student: "學生" };
+  let me = null;
+
+  const $ = id => document.getElementById(id);
+  function h(tag, props, ...kids) {
+    const e = document.createElement(tag);
+    Object.entries(props || {}).forEach(([k, v]) => {
+      if (k === "text") e.textContent = v;
+      else if (k === "onclick") e.onclick = v;
+      else e.setAttribute(k, v);
     });
+    kids.forEach(k => e.append(k));
+    return e;
+  }
+  function say(id, color, text) { const el = $(id); el.style.color = color; el.textContent = text; }
 
-    // 監聽其他分頁對 localStorage 的修改（登入分頁一成功，這裡立刻同步）
-    window.addEventListener("storage", (event) => {
-      if (event.key === "loggedInUser") {
-        syncUserFromStorage();
-      }
+  /* ---------- 登入狀態 ---------- */
+  window.addEventListener("DOMContentLoaded", syncUser);
+  window.addEventListener("storage", e => { if (e.key === KEY) syncUser(); });
+
+  function syncUser() {
+    let u = null;
+    try { u = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
+    me = (u && u.token) ? u : null;
+
+    $("outBar").classList.toggle("hidden", !!me);
+    $("inBar").classList.toggle("hidden", !me);
+    $("tabs").classList.toggle("hidden", !me);
+    if (!me) {
+      ["pwCard", "opTab", "recTab", "adminTab"].forEach(i => $(i).classList.add("hidden"));
+      return;
+    }
+    $("uName").textContent = me.name;
+    $("uId").textContent = me.user_id;
+    $("uRole").textContent = ROLE_LABEL[me.role] || me.role;
+    $("opName").value = me.name;
+    $("adminBtn").classList.toggle("hidden", me.role !== "admin");
+    $("pwNotice").classList.toggle("hidden", !me.mustChange);
+
+    if (me.mustChange) {
+      $("tabs").classList.add("hidden");
+      ["opTab", "recTab", "adminTab"].forEach(i => $(i).classList.add("hidden"));
+      $("pwCard").classList.remove("hidden");
+    } else {
+      if ($("pwCard").dataset.manual !== "1") $("pwCard").classList.add("hidden");
+      showTab(document.querySelector(".tabs button.active").dataset.tab);
+    }
+  }
+
+  function showTab(id) {
+    document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === id));
+    ["opTab", "recTab", "adminTab"].forEach(t => $(t).classList.toggle("hidden", t !== id));
+    if (id === "recTab") loadRecords();
+    if (id === "adminTab") { loadUsers(); loadEquipment(); }
+  }
+  document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+  function setLocal(patch) {
+    me = Object.assign({}, me, patch);
+    localStorage.setItem(KEY, JSON.stringify(me));
+    syncUser();
+  }
+  function forceLogout() { localStorage.removeItem(KEY); syncUser(); }
+  async function logout() {
+    try { await api({ action: "logout" }); } catch (e) {}
+    forceLogout();
+  }
+
+  /* ---------- API ---------- */
+  async function api(payload) {
+    payload.token = me ? me.token : "";
+    const res = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
     });
+    let data;
+    try { data = JSON.parse(await res.text()); }
+    catch (e) { throw new Error("後端回傳格式不正確，請確認 API_URL 與部署設定。"); }
+    if (data.code === "AUTH") forceLogout();
+    if (data.code === "MUSTCHANGE" && me) setLocal({ mustChange: true });
+    return data;
+  }
 
-    function openLoginTab() {
-      window.open("login.html", "_blank");
-    }
+  /* ---------- 變更密碼 ---------- */
+  function togglePw() {
+    const c = $("pwCard");
+    const show = c.classList.contains("hidden");
+    c.classList.toggle("hidden", !show);
+    c.dataset.manual = show ? "1" : "0";
+    $("pwMsg").textContent = "";
+  }
+  async function changePw() {
+    const o = $("oldPw").value, n = $("newPw").value, n2 = $("newPw2").value;
+    if (!o || !n) return say("pwMsg", "#dc2626", "請輸入目前密碼與新密碼。");
+    if (n !== n2) return say("pwMsg", "#dc2626", "兩次輸入的新密碼不一致。");
+    say("pwMsg", "#2563eb", "處理中...");
+    try {
+      const r = await api({ action: "changePassword", oldPassword: o, newPassword: n });
+      if (r.success) {
+        ["oldPw", "newPw", "newPw2"].forEach(i => $(i).value = "");
+        $("pwCard").dataset.manual = "0";
+        say("pwMsg", "#059669", r.message);
+        setLocal({ mustChange: false });
+      } else say("pwMsg", "#dc2626", r.message);
+    } catch (e) { say("pwMsg", "#dc2626", "操作失敗：" + e.message); }
+  }
 
-    // 防止 XSS：跳脫要插入 HTML 的文字
-    function escapeHtml(s) {
-      return String(s ?? "").replace(/[&<>"']/g, c => ({
-        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-      }[c]));
-    }
+  /* ---------- 借還 ---------- */
+  async function act(type) {
+    const id = $("eqId").value.trim();
+    if (!id) return say("opMsg", "#dc2626", "請輸入或掃描設備編號。");
+    const btns = [$("bBorrow"), $("bReturn")];
+    btns.forEach(b => b.disabled = true);
+    say("opMsg", "#2563eb", "處理中...");
+    try {
+      const r = await api({ action: type, id });
+      if (r.success) {
+        say("opMsg", "#059669", r.message + "（" + r.equipmentName + " / 操作人：" + r.person + "）");
+        $("eqId").value = "";
+      } else say("opMsg", "#dc2626", r.message);
+    } catch (e) { say("opMsg", "#dc2626", "操作失敗：" + e.message); }
+    finally { btns.forEach(b => b.disabled = false); }
+  }
+  $("eqId").addEventListener("keydown", e => { if (e.key === "Enter") act("borrow"); });
 
-    function syncUserFromStorage() {
-      let user = null;
-      try {
-        user = JSON.parse(localStorage.getItem("loggedInUser"));
-      } catch (e) {
-        user = null;
-      }
+  /* ---------- 紀錄 ---------- */
+  async function loadRecords() {
+    if (!me) return;
+    $("recHint").textContent = me.role === "student" ? "（僅顯示您本人的紀錄）" : "";
+    const body = $("recBody");
+    try {
+      const r = await api({ action: "getHistory", filter: $("recFilter").value });
+      body.replaceChildren();
+      if (!r.success) return body.append(row([r.message], 6));
+      const list = r.records.slice(0, 20);
+      if (!list.length) return body.append(row(["目前沒有符合的紀錄"], 6));
+      list.forEach(x => body.append(row([x.id, x.equipmentName, x.borrower, x.borrowTime, x.returner || "-", x.returnTime || "尚未歸還"])));
+    } catch (e) { body.replaceChildren(row(["載入失敗：" + e.message], 6)); }
+  }
+  function row(cells, span) {
+    const tr = h("tr");
+    cells.forEach(c => tr.append(h("td", { text: c, ...(span ? { colspan: span } : {}) })));
+    return tr;
+  }
 
-      if (user && user.token) {
-        currentUser = user;
-        document.getElementById("notLoggedInBar").style.display = "none";
-        document.getElementById("loggedInBar").style.display = "flex";
-        document.getElementById("displayUserName").textContent = user.name;
-        document.getElementById("displayUserId").textContent = user.user_id;
-        document.getElementById("displayUserRole").textContent = user.role;
-        document.getElementById("operatorName").value = user.name;
-        document.getElementById("operationCard").classList.remove("disabled-section");
-        loadInitialData();
-      } else {
-        currentUser = null;
-        document.getElementById("notLoggedInBar").style.display = "flex";
-        document.getElementById("loggedInBar").style.display = "none";
-        document.getElementById("operatorName").value = "";
-        document.getElementById("operationCard").classList.add("disabled-section");
-        renderHistory(null);
-      }
-    }
-
-    // 登出：先通知後端讓 token 失效，再清除前端狀態（所有分頁同步登出）
-    async function handleLogout() {
-      try { await callApi({ action: "logout" }); } catch (e) {}
-      localStorage.removeItem("loggedInUser");
-      syncUserFromStorage();
-    }
-
-    // 統一的 API 呼叫：自動帶 token，過期時自動登出
-    async function callApi(payload) {
-      payload.token = currentUser ? currentUser.token : "";
-      const response = await fetch(API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify(payload)
+  /* ---------- 管理：使用者 ---------- */
+  async function loadUsers() {
+    const body = $("userBody");
+    try {
+      const r = await api({ action: "adminListUsers" });
+      body.replaceChildren();
+      if (!r.success) return body.append(row([r.message], 6));
+      r.users.forEach(u => {
+        const tr = row([u.user_id, u.name, u.role, u.status || "啟用", u.mustChange ? "是" : ""]);
+        tr.append(h("td", {},
+          h("button", { class: "gray small", text: "編輯", onclick: () => {
+            $("auId").value = u.user_id; $("auName").value = u.name;
+            $("auRole").value = u.role; $("auStatus").value = u.status;
+          }}),
+          " ",
+          h("button", { class: "amber small", text: "重設密碼", onclick: () => resetPw(u) })
+        ));
+        body.append(tr);
       });
+    } catch (e) { body.replaceChildren(row(["載入失敗：" + e.message], 6)); }
+  }
+  async function saveUser() {
+    say("auMsg", "#2563eb", "處理中...");
+    try {
+      const r = await api({ action: "adminSaveUser", user_id: $("auId").value, name: $("auName").value,
+                            role: $("auRole").value, status: $("auStatus").value });
+      if (r.success) {
+        say("auMsg", "#059669", r.message + (r.tempPassword ? "\n臨時密碼：" + r.tempPassword + "（請私下告知對方，登入後需改密碼）" : ""));
+        loadUsers();
+      } else say("auMsg", "#dc2626", r.message);
+    } catch (e) { say("auMsg", "#dc2626", "操作失敗：" + e.message); }
+  }
+  async function resetPw(u) {
+    if (!confirm("確定要重設 " + u.name + "（" + u.user_id + "）的密碼嗎？")) return;
+    try {
+      const r = await api({ action: "adminResetPassword", user_id: u.user_id });
+      say("auMsg", r.success ? "#059669" : "#dc2626",
+          r.success ? u.name + " 的臨時密碼：" + r.tempPassword + "（請私下告知對方）" : r.message);
+      if (r.success) loadUsers();
+    } catch (e) { say("auMsg", "#dc2626", "操作失敗：" + e.message); }
+  }
 
-      const raw = await response.text();
-      let data;
-      try {
-        data = JSON.parse(raw);
-      } catch (e) {
-        throw new Error("後端回傳格式不正確，請確認 API_URL 與部署設定。");
-      }
-
-      if (data.code === "AUTH") {
-        localStorage.removeItem("loggedInUser");
-        syncUserFromStorage();
-      }
-      return data;
-    }
-
-    // 送出借用或歸還（操作人姓名由後端依 token 決定）
-    async function submitEquipmentAction(actionType) {
-      if (!currentUser) {
-        alert("請先登入系統！");
-        return;
-      }
-
-      const equipmentId = document.getElementById("equipmentId").value.trim();
-      const msgEl = document.getElementById("actionMsg");
-
-      if (!equipmentId) {
-        msgEl.style.color = "#dc2626";
-        msgEl.textContent = "請輸入或掃描設備編號。";
-        return;
-      }
-
-      const btns = document.querySelectorAll(".btn-borrow, .btn-return");
-      btns.forEach(b => b.disabled = true);
-      msgEl.style.color = "#2563eb";
-      msgEl.textContent = "處理中...";
-
-      try {
-        const res = await callApi({ action: actionType, id: equipmentId });
-
-        if (res.success) {
-          msgEl.style.color = "#059669";
-          msgEl.textContent = res.message + "（" + res.equipmentName + " / 操作人：" + res.person + "）";
-          document.getElementById("equipmentId").value = "";
-          loadInitialData();
-        } else {
-          msgEl.style.color = "#dc2626";
-          msgEl.textContent = res.message;
-        }
-      } catch (err) {
-        msgEl.style.color = "#dc2626";
-        msgEl.textContent = "操作失敗：" + err.message;
-      } finally {
-        btns.forEach(b => b.disabled = false);
-      }
-    }
-
-    async function loadInitialData() {
-      if (!currentUser) return;
-      try {
-        const res = await callApi({ action: "getHistory", filter: "all" });
-        if (res.success) {
-          renderHistory(res.records);
-        }
-      } catch (err) {
-        console.error("載入紀錄失敗:", err);
-      }
-    }
-
-    function renderHistory(records) {
-      const tbody = document.getElementById("historyTableBody");
-
-      if (!currentUser) {
-        tbody.innerHTML = '<tr><td colspan="6">請先登入以查看紀錄</td></tr>';
-        return;
-      }
-      if (!records || records.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6">目前尚無借還紀錄</td></tr>';
-        return;
-      }
-      tbody.innerHTML = records.slice(0, 20).map(r => `
-        <tr>
-          <td>${escapeHtml(r.id)}</td>
-          <td>${escapeHtml(r.equipmentName)}</td>
-          <td>${escapeHtml(r.borrower)}</td>
-          <td>${escapeHtml(r.borrowTime)}</td>
-          <td>${escapeHtml(r.returner) || "-"}</td>
-          <td>${escapeHtml(r.returnTime) || "尚未歸還"}</td>
-        </tr>
-      `).join("");
-    }
-  </script>
+  /* ---------- 管理：設備 ---------- */
+  async function loadEquipment() {
+    const body = $("eqBody");
+    try {
+      const r = await api({ action: "adminListEquipment" });
+      body.replaceChildren();
+      if (!r.success) return body.append(row([r.message], 5));
+      r.equipment.forEach(e => {
+        const tr = row([e.id, e.equipmentName, e.brand, e.status]);
+        tr.append(h("td", {}, h("button", { class: "gray small", text: "編輯", onclick: () => {
+          $("aeId").value = e.id; $("aeName").value = e.equipmentName; $("aeBrand").value = e.brand;
+          if (e.status === "可借用" || e.status === "維修中") $("aeStatus").value = e.status;
+        }})));
+        body.append(tr);
+      });
+    } catch (e) { body.replaceChildren(row(["載入失敗：" + e.message], 5)); }
+  }
+  async function saveEquipment() {
+    say("aeMsg", "#2563eb", "處理中...");
+    try {
+      const r = await api({ action: "adminSaveEquipment", id: $("aeId").value, equipmentName: $("aeName").value,
+                            brand: $("aeBrand").value, status: $("aeStatus").value });
+      say("aeMsg", r.success ? "#059669" : "#dc2626", r.message);
+      if (r.success) loadEquipment();
+    } catch (e) { say("aeMsg", "#dc2626", "操作失敗：" + e.message); }
+  }
+</script>
 </body>
 </html>
