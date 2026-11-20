@@ -61,6 +61,7 @@
       text-align: center;
       font-weight: bold;
       line-height: 1.5;
+      white-space: pre-line;
     }
   </style>
 </head>
@@ -80,7 +81,7 @@
   </div>
 
   <script>
-    // ⚠️ 請換成你的 Google Apps Script 部署網址
+    // ⚠️ 請換成你的 Google Apps Script 部署網址（需與 index.html 相同）
     const API_URL = "https://script.google.com/macros/s/AKfycbz22YkMiPQ898V1KmkQ5E3nMhHzQUTUQDG3TbMdE7CmJs42JbDufwyZjwM6XkxiWUXb/exec";
 
     // 支援按 Enter 鍵直接登入
@@ -113,18 +114,25 @@
         const data = await res.json();
 
         if (data.success) {
+          // 後端若仍是舊版，不會回傳 token，直接提示重新部署
+          if (!data.user || !data.user.token) {
+            msgEl.style.color = "#dc2626";
+            msgEl.textContent = "後端尚未更新：登入成功但沒有收到 token，請在 Apps Script 重新部署新版本。";
+            return;
+          }
+
           // 寫入 localStorage，其他分頁會立刻收到通知
           localStorage.setItem("loggedInUser", JSON.stringify(data.user));
           msgEl.style.color = "#059669";
-          msgEl.innerHTML = `歡迎，${data.user.name}！登入成功。<br>借還分頁已自動同步，您現在可以關閉此分頁。`;
-          
+          msgEl.textContent = `歡迎，${data.user.name}！登入成功。\n借還分頁已自動同步，您現在可以關閉此分頁。`;
+
           // 若是由原分頁透過 window.open 開啟，1.5 秒後嘗試自動關閉此分頁
           setTimeout(() => {
             window.close();
           }, 1500);
         } else {
           msgEl.style.color = "#dc2626";
-          msgEl.textContent = data.message;
+          msgEl.textContent = data.message || "登入失敗。";
         }
       } catch (err) {
         msgEl.style.color = "#dc2626";
