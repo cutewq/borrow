@@ -75,6 +75,7 @@
       font-weight: bold;
       cursor: pointer;
     }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
     .btn-primary { background-color: #2563eb; color: #fff; }
     .btn-borrow  { background-color: #059669; color: #fff; }
     .btn-return  { background-color: #d97706; color: #fff; }
@@ -158,7 +159,7 @@
           </tr>
         </thead>
         <tbody id="historyTableBody">
-          <tr><td colspan="6">載入中...</td></tr>
+          <tr><td colspan="6">請先登入以查看紀錄</td></tr>
         </tbody>
       </table>
     </div>
@@ -170,13 +171,12 @@
     const API_URL = "https://script.google.com/macros/s/AKfycbz22YkMiPQ898V1KmkQ5E3nMhHzQUTUQDG3TbMdE7CmJs42JbDufwyZjwM6XkxiWUXb/exec";
     let currentUser = null;
 
-    // 1. 頁面載入時檢查是否已有登入狀態
+    // 1. 頁面載入時檢查是否已有登入狀態（登入時會自動載入紀錄）
     window.addEventListener("DOMContentLoaded", () => {
       syncUserFromStorage();
-      loadInitialData();
     });
 
-    // 2. 關鍵：監聽其他分頁對 localStorage 的修改（登入分頁一成功，這裡立刻同步）
+    // 2. 監聽其他分頁對 localStorage 的修改（登入分頁一成功，這裡立刻同步）
     window.addEventListener("storage", (event) => {
       if (event.key === "loggedInUser") {
         syncUserFromStorage();
@@ -188,11 +188,23 @@
       window.open("login.html", "_blank");
     }
 
+    // 防止 XSS：跳脫要插入 HTML 的文字
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/[&<>"']/g, c => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
+
     // 從 localStorage 讀取並套用登入者資訊
     function syncUserFromStorage() {
-      const saved = localStorage.getItem("loggedInUser");
-      if (saved) {
-        const user = JSON.parse(saved);
+      let user = null;
+      try {
+        user = JSON.parse(localStorage.getItem("loggedInUser"));
+      } catch (e) {
+        user = null;
+      }
+
+      if (user && user.token) {
         currentUser = user;
         document.getElementById("notLoggedInBar").style.display = "none";
         document.getElementById("loggedInBar").style.display = "flex";
@@ -203,31 +215,42 @@
         // 自動將登入者設為借閱人 / 歸還人
         document.getElementById("operatorName").value = user.name;
         document.getElementById("operationCard").classList.remove("disabled-section");
+
+        loadInitialData();
       } else {
         currentUser = null;
         document.getElementById("notLoggedInBar").style.display = "flex";
         document.getElementById("loggedInBar").style.display = "none";
         document.getElementById("operatorName").value = "";
         document.getElementById("operationCard").classList.add("disabled-section");
+        renderHistory(null);
       }
     }
 
-    // 登出（所有分頁也會同步登出）
-    function handleLogout() {
+    // 登出（先通知後端讓 token 失效，所有分頁也會同步登出）
+    async function handleLogout() {
+      try { await callApi({ action: "logout" }); } catch (e) {}
       localStorage.removeItem("loggedInUser");
       syncUserFromStorage();
     }
 
+    // 統一的 API 呼叫：自動帶 token，過期時自動登出
     async function callApi(payload) {
+      payload.token = currentUser ? currentUser.token : "";
       const response = await fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(payload)
       });
-      return await response.json();
+      const data = await response.json();
+      if (data.code === "AUTH") {
+        localStorage.removeItem("loggedInUser");
+        syncUserFromStorage();
+      }
+      return data;
     }
 
-    // 送出借用或歸還（直接使用 currentUser.name）
+    // 送出借用或歸還（操作人姓名由後端依 token 決定）
     async function submitEquipmentAction(actionType) {
       if (!currentUser) {
         alert("請先登入系統！");
@@ -243,15 +266,13 @@
         return;
       }
 
+      const btns = document.querySelectorAll(".btn-borrow, .btn-return");
+      btns.forEach(b => b.disabled = true);
       msgEl.style.color = "#2563eb";
       msgEl.textContent = "處理中...";
 
       try {
-        const res = await callApi({
-          action: actionType,
-          id: equipmentId,
-          name: currentUser.name
-        });
+        const res = await callApi({ action: actionType, id: equipmentId });
 
         if (res.success) {
           msgEl.style.color = "#059669";
@@ -265,12 +286,16 @@
       } catch (err) {
         msgEl.style.color = "#dc2626";
         msgEl.textContent = "操作失敗：" + err.message;
+      } finally {
+        btns.forEach(b => b.disabled = false);
       }
     }
 
+    // 載入近期紀錄
     async function loadInitialData() {
+      if (!currentUser) return;
       try {
-        const res = await callApi({ action: "getInitialData" });
+        const res = await callApi({ action: "getHistory", filter: "all" });
         if (res.success) {
           renderHistory(res.records);
         }
@@ -281,18 +306,23 @@
 
     function renderHistory(records) {
       const tbody = document.getElementById("historyTableBody");
+
+      if (!currentUser) {
+        tbody.innerHTML = '<tr><td colspan="6">請先登入以查看紀錄</td></tr>';
+        return;
+      }
       if (!records || records.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6">目前尚無借還紀錄</td></tr>';
         return;
       }
       tbody.innerHTML = records.slice(0, 20).map(r => `
         <tr>
-          <td>${r.id}</td>
-          <td>${r.equipmentName}</td>
-          <td>${r.borrower}</td>
-          <td>${r.borrowTime}</td>
-          <td>${r.returner || "-"}</td>
-          <td>${r.returnTime || "尚未歸還"}</td>
+          <td>${escapeHtml(r.id)}</td>
+          <td>${escapeHtml(r.equipmentName)}</td>
+          <td>${escapeHtml(r.borrower)}</td>
+          <td>${escapeHtml(r.borrowTime)}</td>
+          <td>${escapeHtml(r.returner) || "-"}</td>
+          <td>${escapeHtml(r.returnTime) || "尚未歸還"}</td>
         </tr>
       `).join("");
     }
