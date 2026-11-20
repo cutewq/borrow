@@ -27,6 +27,7 @@
     .hidden { display:none !important; }
     .msg { margin-top:10px; font-weight:bold; white-space:pre-line; }
     .scroll { overflow-x:auto; }
+    #reader { width:100%; max-width:360px; margin:0 auto 10px; }
     table { width:100%; border-collapse:collapse; font-size:.9rem; }
     th, td { border:1px solid #e5e7eb; padding:7px; text-align:left; }
     th { background:#dbeafe; color:#1e40af; white-space:nowrap; }
@@ -61,6 +62,7 @@
     </div>
     <button onclick="changePw()">更新密碼</button>
     <div id="pwMsg" class="msg"></div>
+    <div style="margin-top:8px;font-size:.8rem;color:#6b7280">改完密碼後若又跳回此畫面，請查看頁面最下方的「後端版本」是否為 v3.1。</div>
   </div>
 
   <!-- 分頁按鈕 -->
@@ -76,6 +78,11 @@
     <div class="row">
       <div class="group"><label>操作人（自動帶入）</label><input type="text" id="opName" readonly /></div>
       <div class="group"><label>設備編號（可掃描 QR Code）</label><input type="text" id="eqId" placeholder="請輸入或掃描設備編號" /></div>
+    </div>
+    <div class="row"><button class="gray" onclick="startScan()">📷 掃描 QR Code</button></div>
+    <div id="scanBox" class="hidden">
+      <div id="reader"></div>
+      <div style="text-align:center"><button class="red small" onclick="stopScan()">關閉相機</button></div>
     </div>
     <div class="row">
       <button class="green" id="bBorrow" onclick="act('borrow')">確認借用</button>
@@ -137,11 +144,13 @@
     </table></div>
   </div>
 
+  <div id="ver" style="text-align:center;color:#6b7280;font-size:.8rem"></div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script>
   // ⚠️ 請換成你的 Google Apps Script 部署網址（需與 login.html 相同）
-  const API_URL = "https://script.google.com/macros/s/AKfycbzSZY6RtjJyPxMFbjrgAmQj1KOhw0bodry_jB0WQy5aFGnIx6EQcfUL9nYnqGp25-2e/exec";
+  const API_URL = "https://script.google.com/macros/s/AKfycbz22YkMiPQ898V1KmkQ5E3nMhHzQUTUQDG3TbMdE7CmJs42JbDufwyZjwM6XkxiWUXb/exec";
   const KEY = "loggedInUser";
   const ROLE_LABEL = { admin: "管理員", teacher: "老師", student: "學生" };
   let me = null;
@@ -160,7 +169,13 @@
   function say(id, color, text) { const el = $(id); el.style.color = color; el.textContent = text; }
 
   /* ---------- 登入狀態 ---------- */
-  window.addEventListener("DOMContentLoaded", syncUser);
+  window.addEventListener("DOMContentLoaded", () => {
+    syncUser();
+    const pre = new URLSearchParams(location.search).get("id");
+    if (pre) $("eqId").value = pre.trim();
+    api({ action: "ping" }).then(r => { $("ver").textContent = "後端版本：" + (r.version || "未知（請重新部署）"); })
+      .catch(() => { $("ver").textContent = "後端版本：無法連線"; });
+  });
   window.addEventListener("storage", e => { if (e.key === KEY) syncUser(); });
 
   function syncUser() {
@@ -193,6 +208,7 @@
   }
 
   function showTab(id) {
+    if (id !== "opTab") stopScan();
     document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === id));
     ["opTab", "recTab", "adminTab"].forEach(t => $(t).classList.toggle("hidden", t !== id));
     if (id === "recTab") loadRecords();
@@ -205,7 +221,8 @@
     localStorage.setItem(KEY, JSON.stringify(me));
     syncUser();
   }
-  function forceLogout() { localStorage.removeItem(KEY); syncUser(); }
+  function forceLogout() {
+    stopScan(); localStorage.removeItem(KEY); syncUser(); }
   async function logout() {
     try { await api({ action: "logout" }); } catch (e) {}
     forceLogout();
@@ -267,6 +284,38 @@
     } catch (e) { say("opMsg", "#dc2626", "操作失敗：" + e.message); }
     finally { btns.forEach(b => b.disabled = false); }
   }
+  /* ---------- QR Code 掃描 ---------- */
+  let scanner = null;
+  function parseCode(txt) {
+    txt = String(txt || "").trim();
+    try { const id = new URL(txt).searchParams.get("id"); if (id) return id.trim(); } catch (e) {}
+    return txt;
+  }
+  async function startScan() {
+    if (typeof Html5Qrcode === "undefined") return say("opMsg", "#dc2626", "掃描元件載入失敗，請檢查網路，或改用手動輸入設備編號。");
+    if (scanner) return;
+    $("scanBox").classList.remove("hidden");
+    scanner = new Html5Qrcode("reader");
+    try {
+      await scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 220, height: 220 } },
+        text => {
+          const id = parseCode(text);
+          $("eqId").value = id;
+          stopScan();
+          say("opMsg", "#059669", "已掃描設備編號：" + id + "\n請按「確認借用」或「確認歸還」。");
+        }, () => {});
+    } catch (e) {
+      scanner = null;
+      $("scanBox").classList.add("hidden");
+      say("opMsg", "#dc2626", "無法開啟相機：請允許瀏覽器使用相機，並確認網址是 https:// 開頭。");
+    }
+  }
+  async function stopScan() {
+    const sc = scanner; scanner = null;
+    if (sc) { try { await sc.stop(); } catch (e) {} try { sc.clear(); } catch (e) {} }
+    $("scanBox").classList.add("hidden");
+  }
+
   $("eqId").addEventListener("keydown", e => { if (e.key === "Enter") act("borrow"); });
 
   /* ---------- 紀錄 ---------- */
