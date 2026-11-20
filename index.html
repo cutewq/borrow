@@ -62,7 +62,6 @@
     </div>
     <button onclick="changePw()">更新密碼</button>
     <div id="pwMsg" class="msg"></div>
-    <div style="margin-top:8px;font-size:.8rem;color:#6b7280">改完密碼後若又跳回此畫面，請查看頁面最下方的「後端版本」是否為 v3.1。</div>
   </div>
 
   <!-- 分頁按鈕 -->
@@ -150,7 +149,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script>
   // ⚠️ 請換成你的 Google Apps Script 部署網址（需與 login.html 相同）
-  const API_URL = "https://script.google.com/macros/s/AKfycbzSZY6RtjJyPxMFbjrgAmQj1KOhw0bodry_jB0WQy5aFGnIx6EQcfUL9nYnqGp25-2e/exec";
+  const API_URL = "https://script.google.com/macros/s/AKfycbzmwQt_KdxAmXiyCJ6AmMYTcUelRY7sKku9yjRF8rQxa-GH1fhmqnnCqcc-hqWFHMeN/exec";
   const KEY = "loggedInUser";
   const ROLE_LABEL = { admin: "管理員", teacher: "老師", student: "學生" };
   let me = null;
@@ -170,19 +169,36 @@
 
   /* ---------- 登入狀態 ---------- */
   window.addEventListener("DOMContentLoaded", () => {
-    syncUser();
+    refresh();
     const pre = new URLSearchParams(location.search).get("id");
     if (pre) $("eqId").value = pre.trim();
     api({ action: "ping" }).then(r => { $("ver").textContent = "後端版本：" + (r.version || "未知（請重新部署）"); })
       .catch(() => { $("ver").textContent = "後端版本：無法連線"; });
   });
-  window.addEventListener("storage", e => { if (e.key === KEY) syncUser(); });
+  window.addEventListener("storage", e => { if (e.key === KEY) refresh(); });
 
-  function syncUser() {
-    let u = null;
-    try { u = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
-    me = (u && u.token) ? u : null;
+  function readSaved() {
+    try { const u = JSON.parse(localStorage.getItem(KEY)); return (u && u.token) ? u : null; }
+    catch (e) { return null; }
+  }
 
+  // 以後端回傳的資料為準（含是否需要改密碼），不再信任瀏覽器裡存的舊狀態
+  async function refresh() {
+    const saved = readSaved();
+    if (!saved) { me = null; render(); return; }
+    me = { token: saved.token };
+    try {
+      const r = await api({ action: "me" });
+      if (r.success) { me = Object.assign({ token: saved.token }, r.user); render(); }
+      else if (!readSaved()) { me = null; render(); }
+      else { me = null; render(); $("ver").textContent = "無法確認登入狀態：" + r.message; }
+    } catch (e) {
+      me = null; render();
+      $("ver").textContent = "連線失敗：" + e.message;
+    }
+  }
+
+  function render() {
     $("outBar").classList.toggle("hidden", !!me);
     $("inBar").classList.toggle("hidden", !me);
     $("tabs").classList.toggle("hidden", !me);
@@ -216,13 +232,9 @@
   }
   document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
 
-  function setLocal(patch) {
-    me = Object.assign({}, me, patch);
-    localStorage.setItem(KEY, JSON.stringify(me));
-    syncUser();
-  }
   function forceLogout() {
-    stopScan(); localStorage.removeItem(KEY); syncUser(); }
+    stopScan(); localStorage.removeItem(KEY); me = null; render();
+  }
   async function logout() {
     try { await api({ action: "logout" }); } catch (e) {}
     forceLogout();
@@ -240,7 +252,7 @@
     try { data = JSON.parse(await res.text()); }
     catch (e) { throw new Error("後端回傳格式不正確，請確認 API_URL 與部署設定。"); }
     if (data.code === "AUTH") forceLogout();
-    if (data.code === "MUSTCHANGE" && me) setLocal({ mustChange: true });
+    if (data.code === "MUSTCHANGE") refresh();
     return data;
   }
 
@@ -263,7 +275,7 @@
         ["oldPw", "newPw", "newPw2"].forEach(i => $(i).value = "");
         $("pwCard").dataset.manual = "0";
         say("pwMsg", "#059669", r.message);
-        setLocal({ mustChange: false });
+        refresh();
       } else say("pwMsg", "#dc2626", r.message);
     } catch (e) { say("pwMsg", "#dc2626", "操作失敗：" + e.message); }
   }
