@@ -358,3 +358,7 @@ function formatTime_(value) {
   if (isNaN(d.getTime())) return String(value);
   return Utilities.formatDate(d, CONFIG.TIMEZONE, "yyyy/MM/dd HH:mm:ss");
 }
+
+function doGet() {
+  return ContentService.createTextOutput("API 新版（含 token 驗證）運作中");
+}
