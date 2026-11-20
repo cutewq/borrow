@@ -32,83 +32,29 @@
       border-bottom: 2px solid #dbeafe;
       padding-bottom: 8px;
     }
-    .top-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-    .form-row {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-bottom: 12px;
-    }
-    .form-group {
-      flex: 1;
-      min-width: 180px;
-      display: flex;
-      flex-direction: column;
-    }
-    label {
-      font-size: 0.9rem;
-      font-weight: bold;
-      margin-bottom: 4px;
-    }
-    input {
-      padding: 10px;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      font-size: 1rem;
-    }
-    input[readonly] {
-      background-color: #e5e7eb;
-      color: #374151;
-      cursor: not-allowed;
-    }
-    button {
-      padding: 10px 18px;
-      border: none;
-      border-radius: 6px;
-      font-size: 1rem;
-      font-weight: bold;
-      cursor: pointer;
-    }
+    .top-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .form-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    .form-group { flex: 1; min-width: 180px; display: flex; flex-direction: column; }
+    label { font-size: 0.9rem; font-weight: bold; margin-bottom: 4px; }
+    input { padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 1rem; }
+    input[readonly] { background-color: #e5e7eb; color: #374151; cursor: not-allowed; }
+    button { padding: 10px 18px; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; }
     button:disabled { opacity: 0.6; cursor: not-allowed; }
     .btn-primary { background-color: #2563eb; color: #fff; }
     .btn-borrow  { background-color: #059669; color: #fff; }
     .btn-return  { background-color: #d97706; color: #fff; }
     .btn-logout  { background-color: #6b7280; color: #fff; padding: 8px 14px; font-size: 0.9rem; }
-    .disabled-section {
-      opacity: 0.55;
-      pointer-events: none;
-    }
-    .status-msg {
-      margin-top: 10px;
-      font-weight: bold;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-      font-size: 0.9rem;
-    }
-    th, td {
-      border: 1px solid #e5e7eb;
-      padding: 8px;
-      text-align: left;
-    }
-    th {
-      background-color: #dbeafe;
-      color: #1e40af;
-    }
+    .disabled-section { opacity: 0.55; pointer-events: none; }
+    .status-msg { margin-top: 10px; font-weight: bold; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; }
+    th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; }
+    th { background-color: #dbeafe; color: #1e40af; }
   </style>
 </head>
 <body>
   <div class="container">
 
-    <!-- 最上方：登入狀態列（點擊按鈕另開分頁登入） -->
+    <!-- 最上方：登入狀態列 -->
     <div class="card">
       <div class="top-bar" id="notLoggedInBar">
         <span>⚠️ 目前尚未登入，請先登入後再進行借還登記。</span>
@@ -167,23 +113,21 @@
   </div>
 
   <script>
-    // ⚠️ 請換成你的 Google Apps Script 部署網址
+    // ⚠️ 請換成你的 Google Apps Script 部署網址（需與 login.html 相同）
     const API_URL = "https://script.google.com/macros/s/AKfycbz22YkMiPQ898V1KmkQ5E3nMhHzQUTUQDG3TbMdE7CmJs42JbDufwyZjwM6XkxiWUXb/exec";
     let currentUser = null;
 
-    // 1. 頁面載入時檢查是否已有登入狀態（登入時會自動載入紀錄）
     window.addEventListener("DOMContentLoaded", () => {
       syncUserFromStorage();
     });
 
-    // 2. 監聽其他分頁對 localStorage 的修改（登入分頁一成功，這裡立刻同步）
+    // 監聽其他分頁對 localStorage 的修改（登入分頁一成功，這裡立刻同步）
     window.addEventListener("storage", (event) => {
       if (event.key === "loggedInUser") {
         syncUserFromStorage();
       }
     });
 
-    // 另開新分頁開啟 login.html
     function openLoginTab() {
       window.open("login.html", "_blank");
     }
@@ -195,7 +139,6 @@
       }[c]));
     }
 
-    // 從 localStorage 讀取並套用登入者資訊
     function syncUserFromStorage() {
       let user = null;
       try {
@@ -211,11 +154,8 @@
         document.getElementById("displayUserName").textContent = user.name;
         document.getElementById("displayUserId").textContent = user.user_id;
         document.getElementById("displayUserRole").textContent = user.role;
-
-        // 自動將登入者設為借閱人 / 歸還人
         document.getElementById("operatorName").value = user.name;
         document.getElementById("operationCard").classList.remove("disabled-section");
-
         loadInitialData();
       } else {
         currentUser = null;
@@ -227,7 +167,7 @@
       }
     }
 
-    // 登出（先通知後端讓 token 失效，所有分頁也會同步登出）
+    // 登出：先通知後端讓 token 失效，再清除前端狀態（所有分頁同步登出）
     async function handleLogout() {
       try { await callApi({ action: "logout" }); } catch (e) {}
       localStorage.removeItem("loggedInUser");
@@ -242,7 +182,15 @@
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(payload)
       });
-      const data = await response.json();
+
+      const raw = await response.text();
+      let data;
+      try {
+        data = JSON.parse(raw);
+      } catch (e) {
+        throw new Error("後端回傳格式不正確，請確認 API_URL 與部署設定。");
+      }
+
       if (data.code === "AUTH") {
         localStorage.removeItem("loggedInUser");
         syncUserFromStorage();
@@ -276,7 +224,7 @@
 
         if (res.success) {
           msgEl.style.color = "#059669";
-          msgEl.textContent = `${res.message}（${res.equipmentName} / 操作人：${res.person}）`;
+          msgEl.textContent = res.message + "（" + res.equipmentName + " / 操作人：" + res.person + "）";
           document.getElementById("equipmentId").value = "";
           loadInitialData();
         } else {
@@ -291,7 +239,6 @@
       }
     }
 
-    // 載入近期紀錄
     async function loadInitialData() {
       if (!currentUser) return;
       try {
